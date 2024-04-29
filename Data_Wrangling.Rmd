@@ -1,0 +1,67 @@
+---
+title: "DataWrangling"
+author: "Radhe Shyam Vatluri"
+date: "2024-04-29"
+output: html_document
+---
+## Front Matter
+```{r}
+#Remove all objects from Environment
+remove(list = ls())
+#Load packages
+library(tidyverse)
+library(data.table)
+#Read in Dataset
+Confirmed <- read.csv("~/Downloads/time_series_covid19_confirmed_US.csv")
+Deaths<- read.csv("~/Downloads/time_series_covid19_deaths_US.csv")
+Vaccinations <- read.csv("~/Downloads/us_state_vaccinations.csv")
+```
+
+```{r}
+data_long <- pivot_longer(Confirmed, cols = starts_with("X"), names_to = "date", names_prefix = "X", values_to = "cases")
+
+# Convert the date column to a proper date format
+data_long$date <- as.Date(data_long$date, format = "%m.%d.%y")
+
+# Group by state and date, and sum the cases
+total_cases_by_state_date <- data_long %>%
+  group_by(`Province_State`,date) %>%
+  summarise(total_cases = sum(cases, na.rm = TRUE))
+
+# Print the resulting data frame
+print(total_cases_by_state_date)
+
+total_cases_by_state_date<-
+  total_cases_by_state_date%>%
+  rename(state = Province_State, cases = total_cases)
+```
+
+```{r}
+data_long <- pivot_longer(Deaths, cols = starts_with("X"), names_to = "date", names_prefix = "X", values_to = "deaths")
+
+# Convert the date column to a proper date format
+data_long$date <- as.Date(data_long$date, format = "%m.%d.%y")
+
+# Group by state and date, and sum the cases
+total_deaths_by_state_date <- data_long %>%
+  group_by(`Province_State`,date) %>%
+  summarise(total_deaths = sum(deaths, na.rm = TRUE))
+
+# Print the resulting data frame
+print(total_deaths_by_state_date)
+
+total_deaths_by_state_date<-
+  total_deaths_by_state_date%>%
+  rename(state = Province_State, deaths = total_deaths)
+```
+
+```{r}
+VaccinationWrangled <- 
+  Vaccinations %>%
+  select(location,date,people_fully_vaccinated)%>%
+  rename(Province_State=location)
+```
+
+
+
+
