@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style type="text/css">
+        /* On mouse hover, lighten state color */
+        circle:hover {
+            opacity: 0.7;
+        }
+
+        /* Style for Custom Tooltip */
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: auto;
+            height: auto;
+            padding: 5px;
+            font: 12px sans-serif;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            pointer-events: none;
+            display: none;
+        }
+
+        /* Legend Font Style */
+        body {
+            font: 11px sans-serif;
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <strong>Please select an option from the menu</strong>
+    <select id="dataType">
+        <option value="Confirmed">Confirmed</option>
+        <option value="Deaths">Deaths</option>
+        <option value="Vaccinations">Vaccinations</option>
+    </select>
+</div>
+<div id="map-container">
+    <svg id="map"></svg>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<script type="text/javascript">
+    var width = 800;
+    var height = 600;
+
+    var projection = d3.geoAlbersUsa()
+        .translate([width / 2, height / 2])
+        .scale([width]);
+
+    var path = d3.geoPath().projection(projection);
+
+    var heatmapColor = d3.scaleSequential(d3.interpolateReds);
+
+    var radiusScales = {
+        "Confirmed": d3.scaleSqrt().range([0, 30]),
+        "Deaths": d3.scaleSqrt().range([0, 20]),
+        "Vaccinations": d3.scaleSqrt().range([0, 40])
+    };
+
+    var currentData = "Confirmed";
+    var radiusScale = radiusScales[currentData];
+
+    var tooltip = d3.select("#tooltip");
+
+    function updateMap(dataType) {
+        currentData = dataType;
+        radiusScale = radiusScales[dataType];
+
+        d3.json("us-states.json").then(function (geojson) {
+            d3.csv("MapData.csv").then(function (data) {
+                var minDataValue = d3.min(data, function (d) { return +d[dataType]; });
+                var maxDataValue = d3.max(data, function (d) { return +d[dataType]; });
+
+                // Set the color scale domain
+                heatmapColor.domain([minDataValue, maxDataValue]);
+                radiusScale.domain([minDataValue, maxDataValue]);
+
+                var svg = d3.select("#map")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                var backgroundLayer = svg.append("g")
+                    .attr("class", "background-layer");
+
+                backgroundLayer.selectAll("path")
+                    .data(geojson.features)
+                    .join("path")
+                    .attr("d", path)
+                    .style("fill", "none")
+                    .style("stroke", "#ccc")
+                    .style("stroke-width", 0.5);
+
+                var foregroundLayer = svg.selectAll(".foreground-layer")
+                    .data([null])
+                    .join("g")
+                    .attr("class", "foreground-layer");
+
+                foregroundLayer.selectAll("circle")
+                    .data(geojson.features)
+                    .join("circle")
+                    .attr("cx", function(d) {
+                        var centroid = projection(d3.geoCentroid(d));
+                        return centroid ? centroid[0] : width / 2;
+                    })
+                    .attr("cy", function(d) {
+                        var centroid = projection(d3.geoCentroid(d));
+                        return centroid ? centroid[1] : height / 2;
+                    })
+                    .attr("r", function(d) {
+                        var stateName = d.properties.name || d.properties.NAME;
+                        var stateData = data.find(function(item) {
+                            return item.State === stateName;
+                        });
+                        var dataValue = stateData ? +stateData[currentData] : 0;
+                        return radiusScale(dataValue);
+                    })
+                    .style("fill", function(d) {
+                        var stateName = d.properties.name || d.properties.NAME;
+                        var stateData = data.find(function(item) {
+                            return item.State === stateName;
+                        });
+                        var dataValue = stateData ? +stateData[currentData] : 0;
+                        return heatmapColor(dataValue);
+                    })
+                    .style("fill-opacity", 0.5) // Set opacity to 0.5 for semi-transparent circles
+                    .on("mouseover", function(event, d) {
+                        var stateName = d.properties.name || d.properties.NAME;
+                        var stateData = data.find(function(item) {
+                            return item.State === stateName;
+                        });
+                        if (stateData) {
+                            tooltip.style("display", "block")
+                                .html(stateName + "<br>" + currentData + ": " + stateData[currentData])
+                                .style("left", (event.pageX) + "px")
+                                .style("top", (event.pageY - 28) + "px");
+                        }
+                    })
+                    .on("mouseout", function() {
+                        tooltip.style("display", "none");
+                    });
+            });
+        });
+    }
+
+    updateMap(currentData);
+
+    d3.select("#dataType").on("change", function() {
+        var selectedDataType = d3.select(this).property("value");
+        updateMap(selectedDataType);
+    });
+</script>
+</body>
+</html>

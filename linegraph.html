@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://unpkg.com/topojson@3.0.2/dist/topojson.min.js"></script>
+  <script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+  <style>
+    body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.dropdown {
+  margin: 20px;
+}
+
+#tooltip-1 {
+  position: absolute;
+  z-index: 10;
+  visibility: hidden;
+  padding: 10px;
+  border-radius: 5px;
+  background: rgb(16, 15, 15);
+  opacity: 0.8;
+  color: white;
+  transition: all 0.2s ease-out;
+  pointer-events: none;
+}
+
+#tooltip-2 {
+  position: absolute;
+  z-index: 10;
+  visibility: hidden;
+  padding: 10px;
+  border-radius: 5px;
+  background: rgb(16, 15, 15);
+  opacity: 0.8;
+  color: white;
+  transition: all 0.2s ease-out;
+  pointer-events: none;
+}
+
+.slidecontainer {
+  display: flex;
+  justify-content: center;
+}
+
+.button-container {
+  margin-left: 100px;
+}
+
+.buttons {
+  font-size: 1.5em;
+  margin: 10px;
+}
+
+.selected {
+  background-color: rgb(142, 160, 241);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  margin: 20px;
+  padding: 10px;
+  border-color: #989696;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+}
+
+/* The slider itself */
+.slider {
+  -webkit-appearance: none;  /* Override default CSS styles */
+  appearance: none;
+  height: 25px; /* Specified height */
+  background: #d3d3d3; /* Grey background */
+  outline: none; /* Remove outline */
+  opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+  -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+  transition: opacity .2s;
+  min-width: 70%;
+}
+
+/* Mouse-over effects */
+.slider:hover {
+  opacity: 1; /* Fully shown on mouse-over */
+}
+
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; /* Override default look */
+  appearance: none;
+  width: 25px; /* Set a specific slider handle width */
+  height: 25px; /* Slider handle height */
+  background: #04AA6D; /* Green background */
+  cursor: pointer; /* Cursor on hover */
+}
+
+.slider::-moz-range-thumb {
+  width: 25px; /* Set a specific slider handle width */
+  height: 25px; /* Slider handle height */
+  background: #04AA6D; /* Green background */
+  cursor: pointer; /* Cursor on hover */
+}
+  </style>
+  <title>Covid-19 USA</title>
+</head>
+<body>
+  <div class="card">
+    <div class="button-container">
+      <button class="buttons selected" id="cases">Cases</button>
+      <button class="buttons" id="deaths">Deaths</button>
+    </div>
+    <div id="tooltip-1"></div>  
+    <div id="map-chart"></div>
+    <div class="slidecontainer">
+      <div>Select Date:</div>
+      <input type="range" class="slider" id="date-range"/>
+    </div>
+  </div>
+  <div class="card">
+    <div id="tooltip-2"></div>
+    <div class="dropdown">
+      <label for="state-dropdown">Select State:</label>
+      <select id="state-dropdown">
+      </select>
+    </div>
+    <div id="line-chart"></div>
+  </div>
+  <script>
+    const topoUrl = "https://d3js.org/us-10m.v2.json";
+const confirmedUrl = "https://raw.githubusercontent.com/nkgazipur/Covid19-us/main/time_series_covid19_confirmed_US.csv";
+const deathUrl = "https://raw.githubusercontent.com/nkgazipur/Covid19-us/main/time_series_covid19_deaths_US.csv";
+
+const nonDateColumn = [
+  "UID",
+  "iso2",
+  "iso3",
+  "code3",
+  "FIPS",
+  "Admin2",
+  "Province_State",
+  "Country_Region",
+  "Lat",
+  "Long_",
+  "Combined_Key",
+];
+
+const getCaseColor = (totalCase) => {
+  switch (true) {
+    case totalCase > 5000:
+      return d3.schemeBlues[6][5];
+    case totalCase > 1000:
+      return d3.schemeBlues[6][4];
+    case totalCase > 500:
+      return d3.schemeBlues[6][3];
+    case totalCase > 200:
+      return d3.schemeBlues[6][2];
+    case totalCase > 50:
+      return d3.schemeBlues[6][1];
+    case totalCase >= 5:
+      return d3.schemeBlues[6][0];
+    default:
+      return "#eee";
+  }
+};
+
+const caseColorData = [
+  { color: d3.schemeBlues[6][0], text: "5 - 50" },
+  { color: d3.schemeBlues[6][1], text: "50 - 200" },
+  { color: d3.schemeBlues[6][2], text: "200 - 500" },
+  { color: d3.schemeBlues[6][3], text: "500 - 1,000" },
+  { color: d3.schemeBlues[6][4], text: "1,000 - 5,000" },
+  { color: d3.schemeBlues[6][5], text: ">5,000" },
+  { color: "#eee", text: "No data" },
+];
+
+const getDeathColor = (totalDeath) => {
+  switch (true) {
+    case totalDeath > 500:
+      return d3.schemeReds[6][5];
+    case totalDeath > 100:
+      return d3.schemeReds[6][4];
+    case totalDeath > 50:
+      return d3.schemeReds[6][3];
+    case totalDeath > 30:
+      return d3.schemeReds[6][2];
+    case totalDeath > 10:
+      return d3.schemeReds[6][1];
+    case totalDeath >= 1:
+      return d3.schemeReds[6][0];
+    default:
+      return "#eee";
+  }
+};
+
+const deathColorData = [
+  { color: d3.schemeReds[6][0], text: "1 - 10" },
+  { color: d3.schemeReds[6][1], text: "10 - 30" },
+  { color: d3.schemeReds[6][2], text: "30 - 50" },
+  { color: d3.schemeReds[6][3], text: "50 - 100" },
+  { color: d3.schemeReds[6][4], text: "100 - 500" },
+  { color: d3.schemeReds[6][5], text: ">500" },
+  { color: "#eee", text: "No data" },
+];
+
+const simplify = (geo, val) => {
+  let simplified = topojson.presimplify(geo);
+  let min_weight = topojson.quantile(simplified, val);
+  //Every arc coordinate whose z-value is lower than min_weight is removed
+  return topojson.simplify(simplified, min_weight);
+};
+
+const drawCounties = (
+  chartGroup,
+  data,
+  geoDataCounties,
+  dateString,
+  previousDateString,
+  pathGenerator,
+  deathMap,
+  width,
+  height
+) => {
+  const mapTitle = chartGroup
+    .selectAll(".map-title")
+    .data([null])
+    .join("text")
+    .attr("class", "map-title")
+    .attr("x", width / 4)
+    .attr("y", 30)
+    .attr("text-anchor", "middle")
+    .style("font-size", "1.5em")
+    .style("font-family", "sans-serif")
+    .text(`${deathMap ? "Deaths" : "Cases"} Map (${dateString})`);
+
+  const legendGroup = chartGroup
+    .selectAll(".legend-group")
+    .data([null])
+    .join("g")
+    .attr("class", "legend-group")
+    .attr("transform", `translate(${width / 2 + 150}, ${height / 4})`);
+  legendGroup
+    .selectAll("text")
+    .data([null])
+    .join("text")
+    .attr("y", -20)
+    .style("font-size", "1.5em")
+    .text(deathMap ? "Deaths" : "Cases");
+  const legends = legendGroup
+    .selectAll("g")
+    .data(deathMap ? deathColorData : caseColorData)
+    .join("g");
+  legends
+    .append("rect")
+    .attr("x", 0)
+    .attr("y", (d, i) => i * 20)
+    .attr("width", 20)
+    .attr("height", 15)
+    .attr("stroke", "grey")
+    .attr("fill", (d) => d.color);
+
+  legends
+    .append("text")
+    .attr("x", 25)
+    .attr("y", (d, i) => i * 20)
+    .attr("dy", "0.9em")
+    .text((d) => d.text);
+
+  const tooltip = d3.select("#tooltip-1");
+
+  const mouseMoved = (e, d) => {
+    let fData = data.filter((t) => t.Admin2 === d.properties.name);
+    const dateValue = fData.reduce(
+      (acc, cv) => acc + parseInt(cv[dateString]),
+      0
+    );
+    const previousDateValue = fData.reduce(
+      (acc, cv) => acc + parseInt(cv[previousDateString]),
+      0
+    );
+    const tooltipText = `<div>State: ${
+      fData[0]["Province_State"]
+    }</div><div>County: ${d.properties.name}</div><div>${
+      deathMap ? "Deaths" : "Cases"
+    }: ${dateValue - previousDateValue}</div>`;
+
+    tooltip
+      .style("visibility", "visible")
+      .style("left", `${e.pageX}px`)
+      .style("top", `${e.pageY}px`)
+      .html(tooltipText);
+  };
+
+  const mouseLeft = (e, d) => {
+    tooltip.style("visibility", "hidden");
+  };
+  const counties = chartGroup
+    .selectAll(".counties-path")
+    .data(geoDataCounties.features)
+    .join("path")
+    .attr("class", "counties-path")
+    .attr("fill", (d) => {
+      let fData = data.filter((t) => t.Admin2 === d.properties.name);
+      if (fData.length > 0) {
+        const dateValue = fData.reduce(
+          (acc, cv) => acc + parseInt(cv[dateString]),
+          0
+        );
+        const previousDateValue = fData.reduce(
+          (acc, cv) => acc + parseInt(cv[previousDateString]),
+          0
+        );
+        if (deathMap) {
+          return getDeathColor(dateValue - previousDateValue);
+        } else {
+          return getCaseColor(dateValue - previousDateValue);
+        }
+      } else {
+        return "#eee";
+      }
+    })
+    .attr("stroke", "lightgrey")
+    .attr("d", pathGenerator)
+    .on("mouseenter mousemove", mouseMoved)
+    .on("mouseleave", mouseLeft);
+};
+
+const main = async () => {
+  const width = window.innerWidth * 0.8;
+  const height = window.innerHeight * 0.6;
+
+  const topoData = await d3.json(topoUrl);
+
+  const pathGenerator = d3.geoPath();
+
+  const simplifiedTopo = simplify(topoData, 0.005);
+
+  const geoDataCounties = topojson.feature(
+    simplifiedTopo,
+    simplifiedTopo.objects.counties
+  );
+
+  const geoDataStates = topojson.feature(
+    simplifiedTopo,
+    simplifiedTopo.objects.states
+  );
+
+  const confirmedData = await d3.csv(confirmedUrl);
+  const availableDates = confirmedData.columns
+    .filter((d) => !nonDateColumn.includes(d))
+    .map((d) => d3.timeParse("%m/%d/%Y")(d));
+
+  let deathData = await d3.csv(deathUrl);
+
+  const svg = d3
+    .select("#map-chart")
+    .selectAll("svg")
+    .data([null])
+    .join("svg")
+    .attr("width", width + 1000)
+    .attr("height", height + 140);
+    
+  const chartGroup = svg
+    .selectAll(".chart-group")
+    .data([null])
+    .join("g")
+    .attr("class", "chart-group")
+    .attr("transform", `translate(${width / 4}, 0)`);
+
+  const states = chartGroup
+    .selectAll(".states-path")
+    .data(geoDataStates.features)
+    .join("path")
+    .attr("class", "states-path")
+    .attr("fill", "none")
+    .attr("stroke", "grey")
+    .attr("stroke-linejoin", "round")
+    .attr("d", pathGenerator);
+
+  let deathMap = false;
+  const oneDay = 1000 * 60 * 60 * 24;
+  let dateString = d3.timeFormat("%m/%d/%Y")(d3.min(availableDates));
+  let previousDateString = d3.timeFormat("%m/%d/%Y")(
+    new Date(d3.min(availableDates).getTime() - oneDay)
+  );
+  const slider = document.getElementById("date-range");
+  slider.min = d3.min(availableDates).getTime();
+  slider.max = d3.max(availableDates).getTime();
+  slider.step = oneDay;
+  slider.addEventListener("change", (e) => {
+    const date = new Date(+e.target.value);
+    const previousDate = new Date(+e.target.value - oneDay);
+    dateString = d3.timeFormat("%m/%d/%Y")(date);
+    previousDateString = d3.timeFormat("%m/%d/%Y")(previousDate);
+    if (deathMap) {
+      drawCounties(
+        chartGroup,
+        deathData,
+        geoDataCounties,
+        dateString,
+        previousDateString,
+        pathGenerator,
+        deathMap,
+        width,
+        height
+      );
+    } else {
+      drawCounties(
+        chartGroup,
+        confirmedData,
+        geoDataCounties,
+        dateString,
+        previousDateString,
+        pathGenerator,
+        deathMap,
+        width,
+        height
+      );
+    }
+  });
+
+  d3.select("#cases").on("click", () => {
+    d3.select("#cases").attr("class", "buttons selected");
+    d3.select("#deaths").attr("class", "buttons");
+    deathMap = false;
+    drawCounties(
+      chartGroup,
+      confirmedData,
+      geoDataCounties,
+      dateString,
+      previousDateString,
+      pathGenerator,
+      deathMap,
+      width,
+      height
+    );
+  });
+  d3.select("#deaths").on("click", () => {
+    d3.select("#deaths").attr("class", "buttons selected");
+    d3.select("#cases").attr("class", "buttons");
+    deathMap = true;
+    drawCounties(
+      chartGroup,
+      deathData,
+      geoDataCounties,
+      dateString,
+      previousDateString,
+      pathGenerator,
+      deathMap,
+      width,
+      height
+    );
+  });
+
+  drawCounties(
+    chartGroup,
+    confirmedData,
+    geoDataCounties,
+    dateString,
+    previousDateString,
+    pathGenerator,
+    deathMap,
+    width,
+    height
+  );
+};
+
+main();
+
+  </script>
+  <script>
+    const vaccinationUrl = "https://raw.githubusercontent.com/nkgazipur/Covid19-us/main/us_state_vaccinations.csv";
+
+const drawChart = (casesData, vaccData, dateRange, selectedState) => {
+  const width = window.innerWidth * 0.9;
+  const height = window.innerHeight * 0.6;
+  const margin = { top: 20, right: 140, bottom: 100, left: 140 };
+  const caseDataMap = [];
+
+  dateRange.forEach((d) => {
+    const totalCases = casesData.reduce((acc, cv) => {
+      const dateString = d3.timeFormat("%m/%d/%Y")(d);
+      return acc + parseInt(cv[dateString]);
+    }, 0);
+    caseDataMap.push({ date: d, value: totalCases });
+  });
+
+  const svg = d3
+    .select("#line-chart")
+    .selectAll("svg")
+    .data([null])
+    .join("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+  const chartTitle = svg
+    .selectAll(".chart-title")
+    .data([null])
+    .join("text")
+    .attr("class", "chart-title")
+    .attr("x", width / 2)
+    .attr("y", 20)
+    .attr("text-anchor", "middle")
+    .style("font-size", "1.5em")
+    .style("font-family", "sans-serif")
+    .text(`State: ${selectedState}`);
+
+  const chartGroup = svg
+    .selectAll(".chart-group")
+    .data([null])
+    .join("g")
+    .attr("class", "chart-group");
+
+  const caseDatesList = caseDataMap.map((d) => d.date);
+
+  const vaccDatesList = vaccData.map((d) => d.date);
+
+  const minDate = d3.min([
+    d3.min(caseDataMap.map((d) => d.date)),
+    d3.min(vaccData.map((d) => d.date)),
+  ]);
+
+  const maxDate = d3.max([
+    d3.max(caseDataMap.map((d) => d.date)),
+    d3.max(vaccData.map((d) => d.date)),
+  ]);
+
+  const xScale = d3
+    .scaleTime()
+    .domain([minDate, maxDate])
+    .range([margin.left, width - margin.right]);
+
+  const yCaseScale = d3
+    .scaleLinear()
+    .domain([0, d3.max(caseDataMap.map((d) => d.value))])
+    .range([height - margin.bottom, margin.top]);
+
+  const yVaccScale = d3
+    .scaleLinear()
+    .domain(d3.extent(vaccData.map((d) => d["people_vaccinated"])))
+    .range([height - margin.bottom, margin.top]);
+
+  const tooltip = d3.select("#tooltip-2");
+
+  const caseCircle = svg
+    .selectAll(".case-circle")
+    .data([null])
+    .join("circle")
+    .attr("class", "case-circle");
+
+  const deathCircle = svg
+    .selectAll(".vacc-circle")
+    .data([null])
+    .join("circle")
+    .attr("class", "vacc-circle");
+
+  const mouseMoved = (event) => {
+    let caseValue = 0;
+    let vaccValue = 0;
+    let vaccDate;
+    const i = d3.bisect(caseDatesList, xScale.invert(event.pageX - 30));
+    const caseDate = caseDatesList[i];
+    if (caseDataMap.filter((d) => d.date === caseDate).length > 0) {
+      caseValue = caseDataMap.filter((d) => d.date === caseDate)[0].value;
+    }
+
+    if (xScale.invert(event.pageX) > d3.min(vaccDatesList)) {
+      const o = d3.bisect(vaccDatesList, xScale.invert(event.pageX - 30));
+      vaccDate = vaccDatesList[o];
+      vaccValue = vaccData.filter((d) => d.date === vaccDate)[0][
+        "people_vaccinated"
+      ];
+    }
+
+    const tooltipText = `<div>Date: ${d3.timeFormat("%d %B %Y")(caseDate)}</div>
+      <div>Total Cases: ${caseValue}</div><div>Total Vaccination: ${vaccValue}</div>`;
+
+    tooltip
+      .style("visibility", "visible")
+      .style("left", `${event.pageX + 20}px`)
+      .style("top", `${event.pageY}px`)
+      .html(tooltipText);
+
+    caseCircle
+      .attr("cx", xScale(caseDate))
+      .attr("cy", yCaseScale(caseValue))
+      .attr("r", 3)
+      .attr("fill", "black")
+      .style("visibility", "visible");
+
+    deathCircle
+      .attr("cx", xScale(vaccDate))
+      .attr("cy", yVaccScale(vaccValue))
+      .attr("r", 3)
+      .attr("fill", "black")
+      .style("visibility", "visible");
+  };
+
+  const mouseLeft = (event) => {
+    tooltip.style("visibility", "hidden");
+    caseCircle.style("visibility", "hidden");
+    deathCircle.style("visibility", "hidden");
+  };
+
+  const tooltipRect = svg
+    .selectAll("rect")
+    .data([null])
+    .join("rect")
+    .attr("x", margin.left)
+    .attr("y", margin.top)
+    .attr("width", width - margin.left - margin.right)
+    .attr("height", height - margin.top - margin.bottom)
+    .attr("fill", "transparent")
+    .on("mouseenter mousemove", mouseMoved)
+    .on("mouseleave", mouseLeft);
+
+  const xAxis = svg
+    .selectAll(".x-axis")
+    .data([null])
+    .join("g")
+    .attr("class", "x-axis")
+    .attr("transform", `translate(0, ${height - margin.bottom})`)
+    .call(d3.axisBottom(xScale));
+
+  const yCaseAxis = svg
+    .selectAll(".y-case-axis")
+    .data([null])
+    .join("g")
+    .attr("class", "y-case-axis")
+    .attr("transform", `translate(${margin.left}, 0)`)
+    .call(d3.axisLeft(yCaseScale));
+
+  const yDeathAxis = svg
+    .selectAll(".y-vacc-axis")
+    .data([null])
+    .join("g")
+    .attr("class", "y-vacc-axis")
+    .attr("transform", `translate(${width - margin.right}, 0)`)
+    .call(d3.axisRight(yVaccScale));
+
+  const xAxisTitle = svg
+    .selectAll(".x-axis-title")
+    .data([null])
+    .join("text")
+    .attr("class", "x-axis-title")
+    .attr("x", width / 2)
+    .attr("y", height - 20)
+    .attr("text-anchor", "middle")
+    .style("font-size", "1.2em")
+    .text("Date");
+
+  const yCaseAxisTitle = svg
+    .selectAll(".y-case-axis-title")
+    .data([null])
+    .join("text")
+    .attr("class", "y-case-axis-title")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -(margin.top + (height - margin.top - margin.bottom) / 2))
+    .attr("y", 40)
+    .attr("text-anchor", "middle")
+    .style("font-size", "1.2em")
+    .text("Total Cases");
+
+  const yDeathAxisTitle = svg
+    .selectAll(".y-vacc-axis-title")
+    .data([null])
+    .join("text")
+    .attr("class", "y-vacc-axis-title")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -(margin.top + (height - margin.top - margin.bottom) / 2))
+    .attr("y", width - 50)
+    .attr("text-anchor", "middle")
+    .style("font-size", "1.2em")
+    .text("Total Vaccinations");
+
+  const legendGroup = svg
+    .selectAll(".legend-group")
+    .data([null])
+    .join("g")
+    .attr("class", "legend-group")
+    .attr("transform", `translate(${margin.left + 20}, ${margin.top + 50})`);
+
+  legendGroup
+    .selectAll("line")
+    .data(["#0394fc", "#a8f578"])
+    .join("line")
+    .attr("x2", 40)
+    .attr("y1", (d, i) => i * 20)
+    .attr("y2", (d, i) => i * 20)
+    .attr("stroke", (d) => d)
+    .attr("stroke-width", 2);
+
+  legendGroup
+    .selectAll("text")
+    .data(["Total Cases", "Total Vaccinations"])
+    .join("text")
+    .attr("x", 45)
+    .attr("y", (d, i) => i * 20)
+    .attr("dy", "0.32em")
+    .text((d) => d);
+
+  const caseLineGenerator = d3
+    .line()
+    .x((d) => xScale(d.date))
+    .y((d) => yCaseScale(d.value));
+
+  const vaccLineGenerator = d3
+    .line()
+    .x((d) => xScale(d.date))
+    .y((d) => yVaccScale(d["people_vaccinated"]))
+    .defined((d) => (d["people_vaccinated"] > 0 ? true : false));
+
+  const caseLine = chartGroup
+    .selectAll(".case-line")
+    .data([null])
+    .join("path")
+    .attr("class", "case-line")
+    .attr("fill", "none")
+    .attr("stroke", "#0394fc")
+    .attr("stroke-width", 3)
+    .attr("stroke-linecap", "round")
+    .attr("stroke-linejoin", "round")
+    .attr("stroke-opacity", 1)
+    .attr("d", caseLineGenerator(caseDataMap));
+
+  const vaccLine = chartGroup
+    .selectAll(".vacc-line")
+    .data([null])
+    .join("path")
+    .attr("class", "vacc-line")
+    .attr("fill", "none")
+    .attr("stroke", "#a8f578")
+    .attr("stroke-width", 3)
+    .attr("stroke-linecap", "round")
+    .attr("stroke-linejoin", "round")
+    .attr("stroke-opacity", 1)
+    .attr("d", vaccLineGenerator(vaccData));
+};
+
+const parseVaccinationData = (d) => {
+  d.date = d3.timeParse("%m/%d/%Y")(d.date);
+  d["people_vaccinated"] = +d["people_vaccinated"];
+  return d;
+};
+const lineChart = async () => {
+  const confirmedData = await d3.csv(confirmedUrl);
+  const stateList = [
+    ...new Set(confirmedData.map((d) => d["Province_State"])),
+  ].sort();
+  const datesRange = confirmedData.columns
+    .filter((d) => !nonDateColumn.includes(d))
+    .map((d) => d3.timeParse("%m/%d/%Y")(d));
+
+  const vaccinationData = await d3.csv(vaccinationUrl, parseVaccinationData);
+
+  d3.select("#state-dropdown")
+    .selectAll("option")
+    .data(stateList)
+    .join("option")
+    .attr("value", (d) => d)
+    .html((d) => d);
+
+  const stateDropdown = document.getElementById("state-dropdown");
+  stateDropdown.addEventListener("change", (e) => {
+    let selectedState = e.target.value;
+    drawChart(
+      confirmedData.filter((t) => t["Province_State"] === selectedState),
+      vaccinationData.filter((v) => v["location"] === selectedState),
+      datesRange,
+      selectedState
+    );
+  });
+  drawChart(
+    confirmedData.filter((t) => t["Province_State"] === "Alabama"),
+    vaccinationData.filter((v) => v["location"] === "Alabama"),
+    datesRange,
+    "Alabama"
+  );
+};
+
+lineChart();
+
+  </script>
+</body>
+</html>

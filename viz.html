@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>COVID-19 Data Visualization</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="controls">
+    <label for="data-type">Data Type:</label>
+    <select id="data-type">
+      <option value="cases">Total Cases</option>
+      <option value="deaths">Total Deaths</option>
+      <option value="vaccinations">People Fully Vaccinated</option>
+    </select>
+    <label for="date-picker">Date:</label>
+    <input type="date" id="date-picker">
+  </div>
+  <div id="map"></div>
+
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
