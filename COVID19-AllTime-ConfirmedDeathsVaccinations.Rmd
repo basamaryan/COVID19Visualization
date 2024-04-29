@@ -1,0 +1,80 @@
+---
+title: "COVID19-AllTime-ConfirmedDeathsVaccinations"
+author: "Aryan Chimnani"
+date: "2024-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Front Matter
+```{r}
+#Remove all objects from Environment
+remove(list = ls())
+#Load packages
+library(tidyverse)
+
+#Read in Dataset
+Confirmed <- read.csv("~/Downloads/time_series_covid19_confirmed_US.csv")
+Deaths<- read.csv("~/Downloads/time_series_covid19_deaths_US.csv")
+Vaccinations <- read.csv("~/Downloads/COVID-19_Vaccinations_in_the_United_States_County.csv")
+States <- read.csv("~/Downloads/us-states-territories-updateddd.csv")
+```
+
+```{r}
+States<-
+  States%>%
+  select(Name,Abbreviation)
+```
+
+
+```{r}
+ConfirmedWrangled <- 
+  Confirmed %>%
+  mutate(Confirmed = .[[ncol(.)]]) %>%
+  select(Province_State,Confirmed)%>%
+  group_by(Province_State)%>%
+  summarise(SumConfirmed = sum(Confirmed))
+```
+
+```{r}
+DeathsWrangled <- 
+  Deaths %>%
+  mutate(Deaths = .[[ncol(.)]]) %>%
+  select(Province_State,Deaths)%>%
+  group_by(Province_State)%>%
+  summarise(SumDeaths = sum(Deaths))
+```
+
+```{r}
+VaccinationWrangled <- 
+  Vaccinations %>%
+  filter(Date == "03/08/2023") %>%
+  group_by(Recip_State) %>%
+  summarise(TotalVaccinations = sum(Administered_Dose1_Recip, na.rm = TRUE))
+
+VaccinationFinal<-
+  VaccinationWrangled%>%
+  inner_join(States, by = c("Recip_State"="Abbreviation"))
+
+str(States)
+str(VaccinationWrangled)
+```
+
+```{r}
+JoinedDF<-
+  ConfirmedWrangled%>%
+  inner_join(DeathsWrangled, by = "Province_State")
+
+FinalDF<-
+  JoinedDF%>%
+  inner_join(VaccinationFinal, by = c("Province_State" ="Name"))%>%
+  select(Province_State, SumConfirmed, SumDeaths, TotalVaccinations)%>%
+  rename(State = Province_State , Cases = SumConfirmed , Deaths = SumDeaths, Vaccinations = TotalVaccinations)
+
+write.table(FinalDF, file = "MapData.csv", sep = "\t", row.names = F)
+  
+```
+
